@@ -258,7 +258,7 @@ int lms_rxvga1_enable(struct bladerf *dev, bool enable);
  * Set the gain value of RXVGA1 (in dB)
  *
  * @param[in]   dev     Device handle
- * @param[in]   gain    Gain in dB (range: 0 to 30)
+ * @param[in]   gain    Gain in dB (range: 5 to 30)
  *
  * @return 0 on success, BLADERF_ERR_* value on failure
  */
@@ -268,7 +268,7 @@ int lms_rxvga1_set_gain(struct bladerf *dev, int gain);
  * Get the RXVGA1 gain value (in dB)
  *
  * @param[in]   dev     Device handle
- * @param[out]  gain    Gain in dB (range: 0 to 30)
+ * @param[out]  gain    Gain in dB (range: 5 to 30)
  *
  * @return 0 on success, BLADERF_ERR_* value on failure
  */
@@ -298,7 +298,7 @@ int lms_rxvga2_enable(struct bladerf *dev, bool enable);
 int lms_rxvga2_set_gain(struct bladerf *dev, int gain);
 
 /**
- * Get the RXVGA2 gain value (in dB)
+ * Get the gain on RXVGA2 in dB.
  *
  * @param[in]   dev     Device handle
  * @param[out]  gain    Gain in dB (range: 0 to 30)
@@ -546,5 +546,15 @@ int lms_config_init(struct bladerf *dev, struct lms_xcvr_config *config);
  */
 int lms_select_band(struct bladerf *dev, bladerf_module module,
                     unsigned int freq);
+
+/**
+ * Select internal or external sampling
+ *
+ * @param[in]   dev         Device handle
+ * @param[in]   sampling    Desired sampling mode
+ *
+ * @return 0 on succes, BLADERF_ERR_* value on failure
+ */
+int lms_select_sampling(struct bladerf *dev, bladerf_sampling sampling);
 
 #endif /* LMS_H_ */

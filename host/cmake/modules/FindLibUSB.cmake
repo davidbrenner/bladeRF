@@ -35,7 +35,7 @@ include(CheckIncludeFile)
 #
 # See http://www.libusb.org/wiki/windows_backend#LatestBinarySnapshots
 set(LIBUSB_PATH
-    "C:/Program Files (x86)/libusbx-1.0.16"
+    "C:/Program Files (x86)/libusb-1.0.18"
     CACHE
     PATH
     "Path to libusb files. (This is generally only needed for Windows users who downloaded binary distributions.)"
@@ -44,12 +44,6 @@ set(LIBUSB_PATH
 find_package(PkgConfig)
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(PKGCONFIG_LIBUSB libusb-1.0)
-else(PKG_CONFIG_FOUND)
-    if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-        if(NOT LIBUSB_SUPPRESS_WARNINGS)
-            message(WARNING "Could not find pkg-config, which is a build dependency. If libusb-1.0 can't be found, please install pkg-config.")
-        endif(NOT LIBUSB_SUPPRESS_WARNINGS)
-    endif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 endif(PKG_CONFIG_FOUND)
 
 if(PKGCONFIG_LIBUSB_FOUND)
@@ -67,17 +61,6 @@ if(PKGCONFIG_LIBUSB_FOUND)
     endforeach(i)
 
 else(PKGCONFIG_LIBUSB_FOUND)
-    find_file(LIBUSB_HEADER_FILE
-        NAMES
-        libusb.h
-        PATHS
-        ${LIBUSB_PATH}
-        PATH_SUFFIXES
-        include include/libusbx-1.0 include/libusb-1.0
-       )
-    mark_as_advanced(LIBUSB_HEADER_FILE)
-    get_filename_component(LIBUSB_INCLUDE_DIRS "${LIBUSB_HEADER_FILE}" PATH)
-
     if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
         # The libusbx binary distribution contains several libs.
         # Use the lib that got compiled with the same compiler.
@@ -94,13 +77,30 @@ else(PKGCONFIG_LIBUSB_FOUND)
                 set(LIBUSB_LIBRARY_PATH_SUFFIX MinGW64/dll)
             endif(CMAKE_SIZEOF_VOID_P EQUAL 8)
         endif(MSVC)
+    else()
+        set(LIBUSB_LIBRARY_PATH_SUFFIX lib)
+        set(LIBUSB_EXTRA_PATHS /usr /usr/local /opt/local)
     endif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+
+    find_file(LIBUSB_HEADER_FILE
+        NAMES
+        libusb.h
+        PATHS
+        ${LIBUSB_PATH}
+        ${LIBUSB_EXTRA_PATHS}
+        PATH_SUFFIXES
+        include include/libusbx-1.0 include/libusb-1.0
+       )
+    mark_as_advanced(LIBUSB_HEADER_FILE)
+    get_filename_component(LIBUSB_INCLUDE_DIRS "${LIBUSB_HEADER_FILE}" PATH)
+
 
     find_library(usb_LIBRARY
         NAMES
-        libusb-1.0
+        libusb-1.0 usb-1.0
         PATHS
         ${LIBUSB_PATH}
+        ${LIBUSB_EXTRA_PATHS}
         PATH_SUFFIXES
         ${LIBUSB_LIBRARY_PATH_SUFFIX}
        )
@@ -122,6 +122,14 @@ endif(LIBUSB_FOUND)
 
 if(LIBUSB_FOUND)
 
+    # Introduced in v1.0.9 - these functions are absolutely required
+    check_library_exists("${usb_LIBRARY}" libusb_error_name "" LIBUSB_HAVE_ERROR_NAME)
+    check_library_exists("${usb_LIBRARY}" libusb_get_device_speed "" LIBUSB_HAVE_GET_DEVICE_SPEED)
+
+    if(NOT LIBUSB_HAVE_ERROR_NAME OR NOT LIBUSB_HAVE_GET_DEVICE_SPEED)
+        message(FATAL "The installed version of libusb does not have required functions: libusb_error_name() or libusb_get_device_speed()")
+    endif()
+
     # Introduced in v1.0.10
     check_library_exists("${usb_LIBRARY}" libusb_get_version "" LIBUSB_HAVE_GET_VERSION)
 
@@ -135,5 +143,9 @@ if(LIBUSB_FOUND)
 
     # Provide a hook to check it hotplug support is provided (1.0.16)
     check_library_exists("${usb_LIBRARY}" libusb_hotplug_register_callback  "" LIBUSB_HAVE_HOTPLUG)
+
+    # Test for event handling routines
+    check_library_exists("${usb_LIBRARY}" libusb_handle_events_timeout "" LIBUSB_HAVE_HANDLE_EVENTS_TIMEOUT)
+    check_library_exists("${usb_LIBRARY}" libusb_handle_events_timeout_completed "" LIBUSB_HAVE_HANDLE_EVENTS_TIMEOUT_COMPLETED)
 
 endif(LIBUSB_FOUND)

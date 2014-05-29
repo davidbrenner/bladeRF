@@ -1467,7 +1467,7 @@ static inline int tune_vcocap(struct bladerf *dev, uint8_t base, uint8_t data)
             log_verbose( "Too low: %d -> %d\n", vcocap, vcocap - step );
             vcocap -= step ;
         } else {
-            log_error( "Invalid VTUNE value encountered\n" );
+            log_error( "Invalid VTUNE value encountered: 0x%02x\n", vtune );
             return BLADERF_ERR_UNEXPECTED;
         }
 
@@ -1480,7 +1480,7 @@ static inline int tune_vcocap(struct bladerf *dev, uint8_t base, uint8_t data)
     }
 
     start_i = stop_i = vcocap;
-    while (start_i > 0 && vtune == VCO_NORM) {
+    while (start_i > 0 && vtune != VCO_HIGH) {
         start_i -= 1;
 
         status = bladerf_lms_write(dev, base + 9, start_i | data);
@@ -1511,7 +1511,7 @@ static inline int tune_vcocap(struct bladerf *dev, uint8_t base, uint8_t data)
 
     vtune >>= 6;
 
-    while (stop_i < 64 && vtune == VCO_NORM) {
+    while (stop_i < 64 && vtune != VCO_LOW) {
         stop_i += 1;
 
         status = bladerf_lms_write(dev, base + 9, stop_i | data);
@@ -1832,7 +1832,6 @@ int lms_calibrate_dc(struct bladerf *dev, bladerf_cal_module module)
     }
 
     val = clockenables;
-    cal_clock = 0 ;
     switch (module) {
         case BLADERF_DC_CAL_LPF_TUNING:
             cal_clock = (1 << 5);  /* CLK_EN[5] - LPF CAL Clock */
@@ -2026,5 +2025,73 @@ int lms_select_band(struct bladerf *dev, bladerf_module module,
         status = lms_select_lna(dev, lna);
     }
 
+    return status;
+}
+
+int lms_select_sampling(struct bladerf *dev, bladerf_sampling sampling)
+{
+    uint8_t val;
+    int status = 0;
+
+    if (sampling == BLADERF_SAMPLING_INTERNAL) {
+        /* Disconnect the ADC input from the outside world */
+        status = bladerf_lms_read( dev, 0x09, &val );
+        if (status) {
+            log_warning( "Could not read LMS to connect ADC to external pins\n" );
+            goto out;
+        }
+
+        val &= ~(1<<7);
+        status = bladerf_lms_write( dev, 0x09, val );
+        if (status) {
+            log_warning( "Could not write LMS to connect ADC to external pins\n" );
+            goto out;
+        }
+
+        /* Turn on RXVGA2 */
+        status = bladerf_lms_read( dev, 0x64, &val );
+        if (status) {
+            log_warning( "Could not read LMS to enable RXVGA2\n" );
+            goto out;
+        }
+
+        val |= (1<<1);
+        status = bladerf_lms_write( dev, 0x64, val );
+        if (status) {
+            log_warning( "Could not write LMS to enable RXVGA2\n" );
+            goto out;
+        }
+    } else if (sampling == BLADERF_SAMPLING_EXTERNAL) {
+        /* Turn off RXVGA2 */
+        status = bladerf_lms_read( dev, 0x64, &val );
+        if (status) {
+            log_warning( "Could not read the LMS to disable RXVGA2\n" );
+            goto out;
+        }
+
+        val &= ~(1<<1);
+        status = bladerf_lms_write( dev, 0x64, val );
+        if (status) {
+            log_warning( "Could not write the LMS to disable RXVGA2\n" );
+            goto out;
+        }
+
+        /* Connect the external ADC pins to the internal ADC input */
+        status = bladerf_lms_read( dev, 0x09, &val );
+        if (status) {
+            log_warning( "Could not read the LMS to connect ADC to internal pins\n" );
+            goto out;
+        }
+
+        val |= (1<<7);
+        status = bladerf_lms_write( dev, 0x09, val );
+        if (status) {
+            log_warning( "Could not write the LMS to connect ADC to internal pins\n" );
+        }
+    } else {
+        status = BLADERF_ERR_INVAL;
+    }
+
+out:
     return status;
 }

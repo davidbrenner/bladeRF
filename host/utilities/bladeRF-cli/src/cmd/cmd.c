@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 #include <pthread.h>
 
 #include "cmd.h"
@@ -103,10 +104,10 @@ static const struct cmd cmd_table[] = {
             "\n"
             "Available modules for calibration:\n"
             "\n"
-            "    tuning\n"
-            "    txlpf\n"
-            "    rxlpf\n"
-            "    rxvga2\n"
+            "\ttuning\t\n"
+            "\ttxlpf\t\n"
+            "\trxlpf\t\n"
+            "\trxvga2\t\n"
             "\n"
             "Leave blank to calibrate all of the above.\n"
         )
@@ -125,22 +126,23 @@ static const struct cmd cmd_table[] = {
         FIELD_INIT(.names, cmd_names_echo),
         FIELD_INIT(.exec, cmd_echo),
         FIELD_INIT(.desc, "Echo each argument on a new line"),
-        FIELD_INIT(.help, "echo [arg 1] [arg 2] ... [arg n]\n"
-                "\n"
-                "Echo each argument on a new line.\n")
+        FIELD_INIT(.help,
+            "echo [arg 1] [arg 2] ... [arg n]\n"
+            "\n"
+            "Echo each argument on a new line.\n")
 
     },
     {
         FIELD_INIT(.names, cmd_names_erase),
         FIELD_INIT(.exec, cmd_erase),
-        FIELD_INIT(.desc, "Erase specified sectors of SPI flash"),
+        FIELD_INIT(.desc, "Erase specified erase blocks of SPI flash"),
         FIELD_INIT(.help,
             "erase <offset> <count>\n"
             "\n"
-            "Erase specified sectors of SPI flash\n"
+            "Erase specified erase blocks SPI flash\n"
             "\n"
-            "    <offset>       Starting sector to erase\n"
-            "    <count>        Number of sectors to erase\n"
+            "<offset>\tErase block offset\n"
+            "<count>\tNumber of erase blocks to erase\n"
         )
     },
     {
@@ -154,22 +156,25 @@ static const struct cmd cmd_table[] = {
             "non-development use.\n"
             "\n"
             "Parameters:\n"
-            "   <type>      Type of backup. This selects the appropriate address and length\n"
-            "               values based upon the selected type. Valid values are:\n"
-            "                   cal     - Calibration data\n"
-            "                   fw      - Firmware\n"
-            "                   fpga40  - Metadata and bitstream for a 40 kLE FPGA\n"
-            "                   fpga115 - Metadata and bitstream for a 115 kLE FPGA\n"
             "\n"
-            "   <address>   Address of data to back up.\n"
-            "   <len>       Length of region to back up.\n"
+            "<type>\n"
+            "\tType of backup. This selects the appropriate address and length\n"
+            "\tvalues based upon the selected type. Valid values are:\n"
+            "\t\tcal\tCalibration data\n"
+            "\t\tfw\tFirmware\n"
+            "\t\tfpga40\tMetadata and bitstream for a 40 kLE FPGA\n"
+            "\t\tfpga115\tMetadata and bitstream for a 115 kLE FPGA\n"
             "\n"
-            "Note: When an address and length are provided, the image type will default to \"raw\".\n"
+            "<address>\tAddress of data to back up. Must be erase block-aligned.\n"
+            "<len>\tLength of region to back up. Must be erase block-aligned.\n"
+            "\n"
+            "Note: When an address and length are provided, the image type will default\n"
+            "to \"raw\".\n"
             "\n"
             "Examples:\n"
-            "  flash_backup cal.bin cal                 Back up the calibration data region.\n"
-            "  flash_backup cal_raw.bin 0x30000 0x100   Back up the calibration region as\n"
-            "                                           a raw data image.\n"
+            "\tflash_backup cal.bin cal\tBack up the calibration data region.\n"
+            "\tflash_backup cal_raw.bin 0x30000 0x10000\n"
+            "\t\tBack up the calibration region as a raw data image.\n"
             ),
     },
     {
@@ -177,39 +182,43 @@ static const struct cmd cmd_table[] = {
         FIELD_INIT(.exec, cmd_flash_image),
         FIELD_INIT(.desc, "Print a flash image's metadata or create a new flash image"),
         FIELD_INIT(.help, "flash_image <image> [output options]\n"
-                "\n"
-                "Print a flash image's metadata or create a new flash image."
-                "\n"
-                "When provided with the name of a flash image file as the only argument,\n"
-                "this command will print the metadata contents of the image.\n"
-                "\n"
-                "The following options may be used to create a new flash image.\n"
-                "    data=<file>      File to containing data to store in the image.\n"
-                "    address=<addr>   Flash address. Default depends upon 'type' parameter.\n"
-                "    type=<type>      Type of flash image. Defaults to \"raw\".\n"
-                "                     Valid options are:\n"
-                "                       cal     - Calibration data\n"
-                "                       fw      - Firmware\n"
-                "                       fpga40  - Metadata and bitstream for 40 kLE FPGA\n"
-                "                       fpga115 - Metadata and bitstream for 115 kLE FPGA\n"
-                "                       raw     - Raw data. The address and length parameters\n"
-                "                                 must be provided if this type is selected.\n"
-                "    serial=<serial>  Serial # to store in image. Defaults to zeros.\n"
-                )
+            "\n"
+            "Print a flash image's metadata or create a new flash image."
+            "\n"
+            "When provided with the name of a flash image file as the only argument,\n"
+            "this command will print the metadata contents of the image.\n"
+            "\n"
+            "The following options may be used to create a new flash image.\n"
+            "\tdata=<file>\tFile to containing data to store in the image.\n"
+            "\taddress=<addr>\tFlash address. Default depends upon 'type' parameter.\n"
+            "\ttype=<type>\n"
+            "\t\tType of flash image. Defaults to \"raw\".\n"
+            "\t\tValid options are:\n"
+            "\t\t\tcal\tCalibration data\n"
+            "\t\t\tfw\tFirmware\n"
+            "\t\t\tfpga40\tMetadata and bitstream for 40 kLE FPGA\n"
+            "\t\t\tfpga115\tMetadata and bitstream for 115 kLE FPGA\n"
+            "\t\t\traw\n"
+            "\t\t\t\tRaw data. The address and length parameters\n"
+            "\t\t\t\tmust be provided if this type is selected.\n"
+            "\tserial=<serial>\tSerial # to store in image. Defaults to zeros.\n"
+            )
     },
     {
         FIELD_INIT(.names, cmd_names_flash_init_cal),
         FIELD_INIT(.exec, cmd_flash_init_cal),
         FIELD_INIT(.desc, "Write new calibration data to a device or to a file"),
-        FIELD_INIT(.help, "flash_init_cal <fpga_size> <vctcxo_trim> [output file]\n"
+        FIELD_INIT(.help, "flash_init_cal <fpga_size> <vctcxo_trim> [<output_file>]\n"
             "\n"
             "Create and write a new calibration data region to the currently opened device,\n"
-            "or to a file. Be sure to back up calibration data prior to running this command.\n"
-            " (See the `flash_backup` command.)\n\n"
-            "   <fpga_size>       Either 40 or 115, depending on the device model.\n"
-            "   <vctcxo_trim>     VCTCXO/DAC trim value (0x0-0xffff)\n"
-            "   [output file]     File to write calibration data to. When this argument\n"
-            "                     is provided, no data will be written to the device's flash.\n"
+            "or to a file. Be sure to back up calibration data prior to running this\n"
+            "command.\n"
+            "(See the `flash_backup` command.)\n\n"
+            "\t<fpga_size>\tEither 40 or 115, depending on the device model.\n"
+            "\t<vctcxo_trim>\tVCTCXO/DAC trim value (0x0-0xffff)\n"
+            "\t<output_file>\n"
+            "\t\tFile to write calibration data to. When this argument\n"
+            "\t\tis provided, no data will be written to the device's flash.\n"
             )
     },
     {
@@ -217,10 +226,15 @@ static const struct cmd cmd_table[] = {
         FIELD_INIT(.exec, cmd_flash_restore),
         FIELD_INIT(.desc, "Restore flash data from a file"),
         FIELD_INIT(.help, "flash_restore <file> [<address> <length>]\n\n"
-            "Restore flash data from a file, optionally overriding values in the image metadata.\n"
+            "Restore flash data from a file, optionally overriding values in the image\n"
+            "metadata.\n"
             "\n"
-            "   <address>   Defaults to the address specified in the provided flash image file.\n"
-            "   <length>    Defaults to length of the data in the provided image file.\n"
+            "\t<address>\n"
+            "\t\tDefaults to the address specified in the provided\n"
+            "\t\tflash image file.\n"
+            "\t<length>\n"
+            "\t\tDefaults to length of the data in the provided image\n"
+            "\t\tfile.\n"
             ),
     },
     {
@@ -241,13 +255,13 @@ static const struct cmd cmd_table[] = {
             "info\n"
             "\n"
             "Prints the following information about an opened device:\n"
-            "  Serial number\n"
-            "  VCTCXO DAC calibration value\n"
-            "  FPGA size\n"
-            "  Whether or not the FPGA is loaded\n"
-            "  USB bus, address, and speed\n"
-            "  Backend (libusb or kernel module)\n"
-            "  Instance number\n"
+            "\tSerial number\t\n"
+            "\tVCTCXO DAC calibration value\t\n"
+            "\tFPGA size\t\n"
+            "\tWhether or not the FPGA is loaded\t\n"
+            "\tUSB bus, address, and speed\t\n"
+            "\tBackend (libusb or kernel module)\t\n"
+            "\tInstance number\t\n"
         )
     },
     {
@@ -306,14 +320,13 @@ static const struct cmd cmd_table[] = {
             "If num_addresses is supplied, the address is incremented by\n"
             "1 and another peek is performed.\n"
             "\n"
-            "    Valid Address Ranges\n"
-            "    --------------------\n"
-            "    dac          0   255\n"
-            "    lms          0   127\n"
-            "    si           0   255\n"
+            "Valid Address Ranges:\n"
+            "\tdac: 0 to 255\t\n"
+            "\tlms: 0 to 127\t\n"
+            "\tsi:  0 to 255\t\n"
             "\n"
             "Example:\n"
-            "  peek si ...\n"
+            "\tpeek si ...\n"
         )
     },
     {
@@ -330,14 +343,13 @@ static const struct cmd cmd_table[] = {
             "If num_addresses is supplied, the address is incremented by\n"
             "1 and another poke is performed.\n"
             "\n"
-            "    Valid Address Ranges\n"
-            "    --------------------\n"
-            "    dac          0   255\n"
-            "    lms          0   127\n"
-            "    si           0   255\n"
+            "Valid Address Ranges:\n"
+            "\tdac: 0 to 255\t\n"
+            "\tlms: 0 to 127\t\n"
+            "\tsi:  0 to 255\t\n"
             "\n"
             "Example:\n"
-            "  poke lms ...\n"
+            "\tpoke lms ...\n"
         )
     },
     {
@@ -350,21 +362,21 @@ static const struct cmd cmd_table[] = {
             "The print command takes a parameter to print.  The parameter\n"
             "is one of:\n"
             "\n"
-            "   bandwidth       Bandwidth settings\n"
-            "   config          Overview of everything\n"
-            "   frequency       Frequency settings\n"
-            "   lmsregs         LMS6002D register dump\n"
-            "   loopback        Loopback settings\n"
-            "   mimo            MIMO settings\n"
-            "   pa              PA settings\n"
-            "   pps             PPS settings\n"
-            "   refclk          Reference clock settings\n"
-            "   rxvga1          Gain setting of RXVGA1, in dB\n"
-            "   rxvga2          Gain setting of RXVGA2, in dB\n"
-            "   samplerate      Samplerate settings\n"
-            "   trimdac         VCTCXO Trim DAC settings\n"
-            "   txvga1          Gain setting of TXVGA1, in dB\n"
-            "   txvga2          Gain setting of TXVGA2, in dB\n"
+            "\tbandwidth\tBandwidth settings\n"
+            "\tconfig\tOverview of everything\n"
+            "\tfrequency\tFrequency settings\n"
+            "\tlmsregs\tLMS6002D register dump\n"
+            "\tloopback\tLoopback settings\n"
+            "\tmimo\tMIMO settings\n"
+            "\tpa\tPA settings\n"
+            "\tpps\tPPS settings\n"
+            "\trefclk\tReference clock settings\n"
+            "\trxvga1\tGain setting of RXVGA1, in dB\n"
+            "\trxvga2\tGain setting of RXVGA2, in dB\n"
+            "\tsamplerate\tSamplerate settings\n"
+            "\ttrimdac\tVCTCXO Trim DAC settings\n"
+            "\ttxvga1\tGain setting of TXVGA1, in dB\n"
+            "\ttxvga2\tGain setting of TXVGA2, in dB\n"
         )
     },
     {
@@ -411,8 +423,8 @@ static const struct cmd cmd_table[] = {
             "command, and write the firmware to flash via \n"
             "\"load fx3 <firmware file>\"\n"
             "\n"
-            "Note: This command is only available when bladeRF-cli is built\n"
-            "      with libusb support.\n"
+            "Note:\tThis command is only available when bladeRF-cli is built\n"
+            "\twith libusb support.\n"
         )
     },
 #endif
@@ -421,8 +433,9 @@ static const struct cmd cmd_table[] = {
         FIELD_INIT(.exec, cmd_run),
         FIELD_INIT(.desc, "Run a script"),
         FIELD_INIT(.help, "run <script>\n"
-                "\n"
-                "Run the provided script.\n")
+            "\n"
+            "Run the provided script.\n"
+        )
     },
     {
         FIELD_INIT(.names, cmd_names_rx),
@@ -434,14 +447,16 @@ static const struct cmd cmd_table[] = {
             "Receive IQ samples and write them to the specified file.\n"
             "Reception is controlled and configured by one of the following:\n"
             "\n"
-            "    start         Start receiving samples\n"
-            "    stop          Stop Receiving samples\n"
-            "    wait          Wait for sample transmission to complete, or until a specified\n"
-            "                  amount of time elapses\n"
-            "    config        Configure sample reception. If no parameters\n"
-            "                  are provided, the current parameters are printed.\n"
+            "\tstart\tStart receiving samples\n"
+            "\tstop\tStop Receiving samples\n"
+            "\twait\n"
+            "\t\tWait for sample transmission to complete, or until a specified\n"
+            "\t\tamount of time elapses\n"
+            "\tconfig\n"
+            "\t\tConfigure sample reception. If no parameters\n"
+            "\t\tare provided, the current parameters are printed.\n"
             "\n"
-            "Running 'rx' without any additional commands is valid shorthand "
+            "Running 'rx' without any additional commands is valid shorthand\n"
             "for 'rx config'.\n"
             "\n"
             "The wait command takes an optional timeout parameter. This parameter defaults\n"
@@ -453,45 +468,48 @@ static const struct cmd cmd_table[] = {
             "in a single or multiple 'rx config' invocations. Below is a list of\n"
             "available parameters.\n"
             "\n"
-            "    n             Number of samples to receive. 0 = inf.\n"
+            "\tn\tNumber of samples to receive. 0 = inf.\n"
             "\n"
-            "    file          Filename to write received samples to\n"
+            "\tfile\tFilename to write received samples to\n"
             "\n"
-            "    format        Output file format. One of the following:\n"
-            "                      csv          CSV of SC16 Q11 samples\n"
-            "                      bin          Raw SC16 Q11 DAC samples\n"
+            "\tformat\tOutput file format. One of the following:\n"
+            "\t\tcsv\tCSV of SC16 Q11 samples\n"
+            "\t\tbin\tRaw SC16 Q11 DAC samples\n"
             "\n"
-            "    samples       Number of samples per buffer to use in the asynchronous\n"
-            "                  stream. Must be divisible by 1024 and >= 1024.\n"
+            "\tsamples\n"
+            "\t\tNumber of samples per buffer to use in the asynchronous\n"
+            "\t\tstream. Must be divisible by 1024 and >= 1024.\n"
             "\n"
-            "    buffers       Number of sample buffers to use in the asynchronous\n"
-            "                  stream. The min value is 4.\n"
+            "\tbuffers\n"
+            "\t\tNumber of sample buffers to use in the asynchronous\n"
+            "\t\tstream. The min value is 4.\n"
             "\n"
-            "    xfers         Number of simultaneous transfers to allow the asynchronous\n"
-            "                  stream to use. This should be < the 'buffers' parameter.\n"
+            "\txfers\n"
+            "\t\tNumber of simultaneous transfers to allow the asynchronous\n"
+            "\t\tstream to use. This should be < the 'buffers' parameter.\n"
             "\n"
-            "    timeout       Data stream timeout. With no suffix, the default unit is ms.\n"
-            "                  The default value is 1s. Valid suffixes are 'ms' and 's'.\n"
+            "\ttimeout\n"
+            "\t\tData stream timeout. With no suffix, the default unit is ms.\n"
+            "\t\tThe default value is 1s. Valid suffixes are 'ms' and 's'.\n"
             "\n"
             "Example:\n"
-            "       Receive (10240 = 10 * 1024) samples, writing them to /tmp/data.bin\n"
-            "       in the binary DAC format.\n"
+            "\tReceive (10240 = 10 * 1024) samples, writing them to /tmp/data.bin\n"
+            "\tin the binary DAC format.\n"
             "\n"
-            "           rx config file=/tmp/data.bin format=bin n=10K\n"
+            "\trx config file=/tmp/data.bin format=bin n=10K\n"
             "\n"
             "Notes:\n"
+            "\tThe n, samples, buffers, and xfers parameters support the suffixes\n"
+            "\t'K', 'M', and 'G', which are multiples of 1024.\n"
             "\n"
-            "    The n, samples, buffers, and xfers parameters support the suffixes\n"
-            "    'K', 'M', and 'G', which are multiples of 1024.\n"
+            "\tAn 'rx stop' followed by an 'rx start' will result in the samples file\n"
+            "\tbeing truncated. If this is not desired, be sure to run 'rx config' to\n"
+            "\tset another file before restarting the rx stream.\n"
             "\n"
-            "  An 'rx stop' followed by an 'rx start' will result in the samples file\n"
-            "  being truncated. If this is not desired, be sure to run 'rx config' to set\n"
-            "  another file before restarting the rx stream.\n"
-            "\n"
-            "  For higher sample rates, it is advised that the binary output format\n"
-            "  be used, and the output file be written to RAM (e.g. /tmp, /dev/shm),\n"
-            "  if space allows. For larger captures at higher sample rates, consider\n"
-            "  using an SSD instead of a HDD.\n"
+            "\tFor higher sample rates, it is advised that the binary output format\n"
+            "\tbe used, and the output file be written to RAM (e.g. /tmp, /dev/shm),\n"
+            "\tif space allows. For larger captures at higher sample rates, consider\n"
+            "\tusing an SSD instead of a HDD.\n"
             "\n"
         )
     },
@@ -505,15 +523,17 @@ static const struct cmd cmd_table[] = {
             "Read IQ samples from the specified file and transmit them.\n"
             "Transmission is controlled and configured by one of the following:\n"
             "\n"
-            "    start         Start transmitting samples\n"
-            "    stop          Stop transmitting samples\n"
-            "    wait          Wait for sample transmission to complete, or until a specified\n"
-            "                  amount of time elapses\n"
-            "    config        Configure sample transmission . If no parameters\n"
-            "                  are provided, the current parameters are printed.\n"
+            "\tstart\tStart transmitting samples\n"
+            "\tstop\tStop transmitting samples\n"
+            "\twait\n"
+            "\t\tWait for sample transmission to complete, or until a specified\n"
+            "\t\tamount of time elapses\n"
+            "\tconfig\n"
+            "\t\tConfigure sample transmission . If no parameters\n"
+            "\t\tare provided, the current parameters are printed.\n"
             "\n"
-            "Running 'tx' without any additional commands is valid shorthand for\n"
-            "'tx config'.\n"
+            "Running 'tx' without any additional commands is valid shorthand\n"
+            "for 'tx config'.\n"
             "\n"
             "The wait command takes an optional timeout parameter. This parameter defaults\n"
             "to units of ms. The timeout unit may be specified using the ms, s, m, or h\n"
@@ -524,53 +544,57 @@ static const struct cmd cmd_table[] = {
             "in a single or multiple 'tx config' invocations. Below is a list of\n"
             "available parameters.\n"
             "\n"
+            "\tfile\tFilename to read samples from\n"
             "\n"
-            "    file          Filename to read samples from\n"
+            "\tformat\tOutput file format. One of the following:\n"
+            "\t\tcsv\tCSV of SC16 Q11 samples ([-2048, 2047])\n"
+            "\t\tbin\tRaw SC16 Q11 DAC samples ([-2048, 2047])\n"
             "\n"
-            "    format        Output file format. One of the following:\n"
-            "                      csv          CSV of SC16 Q11 samples ([-2048, 2047])\n"
-            "                      bin          Raw SC16 Q11 DAC samples ([-2048, 2047])\n"
+            "\trepeat\n"
+            "\t\tThe number of times the file contents should be \n"
+            "\t\ttransmitted. 0 implies repeat until stopped.\n"
             "\n"
-            "    repeat        The number of times the file contents should be \n"
-            "                  transmitted. 0 implies repeat until stopped.\n"
+            "\tdelay\n"
+            "\t\tThe number of microseconds to delay between retransmitting\n"
+            "\t\tfile contents. 0 implies no delay.\n"
             "\n"
-            "    delay         The number of microseconds to delay between retransmitting\n"
-            "                  file contents. 0 implies no delay.\n"
+            "\tsamples\n"
+            "\t\tNumber of samples per buffer to use in the asynchronous\n"
+            "\t\tstream. Must be divisible by 1024 and >= 1024.\n"
             "\n"
-            "    samples       Number of samples per buffer to use in the asynchronous\n"
-            "                  stream. Must be divisible by 1024 and >= 1024.\n"
+            "\tbuffers\n"
+            "\t\tNumber of sample buffers to use in the asynchronous\n"
+            "\t\tstream. The min value is 4.\n"
             "\n"
-            "    buffers       Number of sample buffers to use in the asynchronous\n"
-            "                  stream. The min value is 4.\n"
+            "\txfers\n"
+            "\t\tNumber of simultaneous transfers to allow the asynchronous\n"
+            "\t\tstream to use. This should be < the 'buffers' parameter.\n"
             "\n"
-            "    xfers         Number of simultaneous transfers to allow the asynchronous\n"
-            "                  stream to use. This should be < the 'buffers' parameter.\n"
-            "\n"
-            "    timeout       Data stream timeout. With no suffix, the default unit is ms.\n"
-            "                  The default value is 1s. Valid suffixes are 'ms' and 's'.\n"
+            "\ttimeout\n"
+            "\t\tData stream timeout. With no suffix, the default unit is ms.\n"
+            "\t\tThe default value is 1s. Valid suffixes are 'ms' and 's'.\n"
             "\n"
             "Example:\n"
-            "   Transmitting the contents of data.bin two times, with a ~250ms\n"
-            "   delay between transmissions.\n"
+            "\tTransmitting the contents of data.bin two times, with a ~250ms\n"
+            "\tdelay between transmissions.\n"
             "\n"
-            "       tx config file=data.bin format=bin repeat=2 delay=250000\n"
+            "\ttx config file=data.bin format=bin repeat=2 delay=250000\n"
             "\n"
             "Notes:\n"
+            "\tThe n, samples, buffers, and xfers parameters support the suffixes\n"
+            "\t'K', 'M', and 'G', which are multiples of 1024.\n"
             "\n"
-            "    The n, samples, buffers, and xfers parameters support the suffixes\n"
-            "    'K', 'M', and 'G', which are multiples of 1024.\n"
+            "\tFor higher sample rates, it is advised that the input file be\n"
+            "\tstored in RAM (e.g. /tmp, /dev/shm) or to an SSD, rather than a HDD.\n"
             "\n"
-            "   For higher sample rates, it is advised that the input file be\n"
-            "   stored in RAM (e.g. /tmp, /dev/shm) or to an SSD, rather than a HDD.\n"
+            "\tWhen providing CSV data, this command will first convert it to\n"
+            "\ta binary format, stored in a file in the current working directory.\n"
+            "\tDuring this process, out-of-range values will be clamped.\n"
             "\n"
-            "   When providing CSV data, this command will first convert it to\n"
-            "   a binary format, stored in a file in the current working directory.\n"
-            "   During this process, out-of-range values will be clamped.\n"
-            "\n"
-            "   When using a binary format, the user is responsible for ensuring\n"
-            "   that the provided data values are within the allowed range.\n"
-            "   This prerequisite alleviates the need for this program to perform\n"
-            "   range checks in time-sensititve callbacks.\n"
+            "\tWhen using a binary format, the user is responsible for ensuring\n"
+            "\tthat the provided data values are within the allowed range.\n"
+            "\tThis prerequisite alleviates the need for this program to perform\n"
+            "\trange checks in time-sensititve callbacks.\n"
             "\n"
         )
     },
@@ -585,21 +609,21 @@ static const struct cmd cmd_table[] = {
             "arguments for that particular command.  The parameter is one\n"
             "of:\n"
             "\n"
-            "   bandwidth       Bandwidth settings\n"
-            "   config          Overview of everything\n"
-            "   frequency       Frequency settings\n"
-            "   lmsregs         LMS6002D register dump\n"
-            "   loopback        Loopback settings\n"
-            "   mimo            MIMO settings\n"
-            "   pa              PA settings\n"
-            "   pps             PPS settings\n"
-            "   refclk          Reference clock settings\n"
-            "   rxvga1          Gain setting of RXVGA1, in dB. Range: [5, 30]\n"
-            "   rxvga2          Gain setting of RXVGA2, in dB. Range: [0, 30]\n"
-            "   samplerate      Samplerate settings\n"
-            "   trimdac         VCTCXO Trim DAC settings\n"
-            "   txvga1          Gain setting of TXVGA1, in dB. Range: [-35, -4]\n"
-            "   txvga2          Gain setting of TXVGA2, in dB. Range: [0, 25]\n"
+            "\tbandwidth\tBandwidth settings\n"
+            "\tconfig\tOverview of everything\n"
+            "\tfrequency\tFrequency settings\n"
+            "\tlmsregs\tLMS6002D register dump\n"
+            "\tloopback\tLoopback settings\n"
+            "\tmimo\tMIMO settings\n"
+            "\tpa\tPA settings\n"
+            "\tpps\tPPS settings\n"
+            "\trefclk\tReference clock settings\n"
+            "\trxvga1\tGain setting of RXVGA1, in dB. Range: [5, 30]\n"
+            "\trxvga2\tGain setting of RXVGA2, in dB. Range: [0, 30]\n"
+            "\tsamplerate\tSamplerate settings\n"
+            "\ttrimdac\tVCTCXO Trim DAC settings\n"
+            "\ttxvga1\tGain setting of TXVGA1, in dB. Range: [-35, -4]\n"
+            "\ttxvga2\tGain setting of TXVGA2, in dB. Range: [0, 25]\n"
         )
     },
     {
@@ -618,6 +642,8 @@ static const struct cmd cmd_table[] = {
         FIELD_INIT(.desc, "Correct for IQ Imbalances"),
         FIELD_INIT(.help,
             "correct [tx|rx] [dc|phase|gain] [args]\n"
+            "\n"
+            "Correct for IQ Imbalances\n"
         )
     },
     /* Always terminate the command entry with a completely NULL entry */
@@ -647,7 +673,7 @@ const struct cmd *get_cmd( char *name )
 int cmd_help(struct cli_state *s, int argc, char **argv)
 {
     int i = 0;
-    int ret = CMD_RET_OK;
+    int ret = CLI_RET_OK;
     const struct cmd *cmd;
 
     /* Asking for general help */
@@ -672,58 +698,18 @@ int cmd_help(struct cli_state *s, int argc, char **argv)
         } else {
             /* Otherwise, print that we couldn't find it :( */
             cli_err(s, argv[0], "No help info available for \"%s\"", argv[1]);
-            ret = CMD_RET_INVPARAM;
+            ret = CLI_RET_INVPARAM;
         }
     } else {
-        ret = CMD_RET_NARGS;
+        ret = CLI_RET_NARGS;
     }
 
     return ret;
 }
 
-const char * cmd_strerror(int error, int lib_error)
-{
-    switch (error) {
-        case CMD_RET_MEM:
-            return "A fatal memory allocation error has occurred";
-
-        case CMD_RET_UNKNOWN:
-            return "A fatal unknown error has occurred";
-
-        case CMD_RET_MAX_ARGC:
-            return "Number of arguments exceeds allowed maximum";
-
-        case CMD_RET_LIBBLADERF:
-            return bladerf_strerror(lib_error);
-
-        case CMD_RET_NODEV:
-            return "No devices are currently opened";
-
-        case CMD_RET_NARGS:
-            return "Invalid number of arguments provided";
-
-        case CMD_RET_NOFPGA:
-            return "Command requires FPGA to be loaded";
-
-        case CMD_RET_STATE:
-            return "Operation invalid in current state";
-
-        case CMD_RET_FILEOP:
-            return "File operation failed";
-
-        case CMD_RET_BUSY:
-            return "Could not complete operation - device is currently busy";
-
-        /* Other commands shall print out helpful info from within their
-         * implementation */
-        default:
-            return NULL;
-    }
-}
-
 int cmd_clear(struct cli_state *s, int argc, char **argv)
 {
-    return CMD_RET_CLEAR_TERM;
+    return CLI_RET_CLEAR_TERM;
 }
 
 int cmd_run(struct cli_state *state, int argc, char **argv)
@@ -731,21 +717,25 @@ int cmd_run(struct cli_state *state, int argc, char **argv)
     int status;
 
     if (argc != 2) {
-        return CMD_RET_NARGS;
+        return CLI_RET_NARGS;
     }
 
     status = cli_open_script(&state->scripts, argv[1]);
 
     if (status == 0) {
-        return CMD_RET_RUN_SCRIPT;
+        return CLI_RET_RUN_SCRIPT;
     } else if (status == 1) {
         cli_err(state, "run", "Recursive loop detected in script");
-        return CMD_RET_INVPARAM;
+        return CLI_RET_INVPARAM;
     } else if (status < 0) {
-        return CMD_RET_FILEOP;
+        if (-status == ENOENT) {
+            return CLI_RET_NOFILE;
+        } else {
+            return CLI_RET_FILEOP;
+        }
     } else {
         /* Shouldn't happen */
-        return CMD_RET_UNKNOWN;
+        return CLI_RET_UNKNOWN;
     }
 }
 
@@ -782,19 +772,26 @@ int cmd_handle(struct cli_state *s, const char *line)
                 ret = cmd->exec(s, argc, argv);
                 pthread_mutex_unlock(&s->dev_lock);
             } else {
-                ret = CMD_RET_QUIT;
+                ret = CLI_RET_QUIT;
             }
         } else {
             cli_err(s, "Unrecognized command", "%s", argv[0]);
-            ret = CMD_RET_NOCMD;
+            ret = CLI_RET_NOCMD;
         }
 
         free_args(argc, argv);
     } else if (argc == 0) {
         free_args(argc, argv);
     } else {
-        ret = CMD_RET_UNKNOWN;
+        ret = CLI_RET_UNKNOWN;
     }
 
     return ret;
 }
+
+void cmd_show_help_all() {
+    int i = 0;
+    for( i = 0; cmd_table[i].names != NULL; i++ )
+        printf("COMMAND: %s\n", cmd_table[i].help);
+}
+

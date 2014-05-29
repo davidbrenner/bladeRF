@@ -27,7 +27,7 @@
 
 #include "cmd.h"
 #include "flash_common.h"
-#include "interactive.h"
+#include "input.h"
 #include "minmax.h"
 #include "conversions.h"
 #include "rel_assert.h"
@@ -35,7 +35,7 @@
 #define lib_error(status, ...) do { \
     state->last_lib_error = (status); \
     cli_err(state, argv[0], __VA_ARGS__); \
-    status = CMD_RET_LIBBLADERF; \
+    status = CLI_RET_LIBBLADERF; \
 } while (0)
 
 int cmd_flash_backup(struct cli_state *state, int argc, char **argv)
@@ -44,12 +44,12 @@ int cmd_flash_backup(struct cli_state *state, int argc, char **argv)
     struct bladerf_devinfo info;
     struct bladerf_image *image = NULL;
     bladerf_image_type image_type;
-    unsigned int address, length;
+    uint32_t address, length, page, count;
     char *filename = NULL;
     bool ok;
 
     if (argc != 3 && argc != 4) {
-        return CMD_RET_NARGS;
+        return CLI_RET_NARGS;
     }
 
     status = flash_check_state(state, argv[0]);
@@ -57,45 +57,45 @@ int cmd_flash_backup(struct cli_state *state, int argc, char **argv)
         return status;
     }
 
-    filename = interactive_expand_path(argv[1]);
+    filename = input_expand_path(argv[1]);
     if (!filename) {
-        return CMD_RET_MEM;
+        return CLI_RET_MEM;
     }
 
     if (argc == 3) {
         if (!strcasecmp(argv[2], "cal")) {
             image_type = BLADERF_IMAGE_TYPE_CALIBRATION;
-            address = BLADERF_FLASH_ADDR_CALIBRATION;
-            length = BLADERF_FLASH_LEN_CALIBRATION;
+            address = BLADERF_FLASH_ADDR_CAL;
+            length = BLADERF_FLASH_BYTE_LEN_CAL;
         } else if (!strcasecmp(argv[2], "fw")) {
             image_type = BLADERF_IMAGE_TYPE_FIRMWARE;
             address = BLADERF_FLASH_ADDR_FIRMWARE;
-            length = BLADERF_FLASH_LEN_FIRMWARE;
+            length = BLADERF_FLASH_BYTE_LEN_FIRMWARE;
         } else if (!strcasecmp(argv[2], "fpga40")) {
             image_type = BLADERF_IMAGE_TYPE_FPGA_40KLE;
-            address = BLADERF_FLASH_ADDR_FPGA_META;
-            length = BLADERF_FLASH_LEN_FPGA_META + BLADERF_FLASH_LEN_FPGA;
+            address = BLADERF_FLASH_ADDR_FPGA;
+            length = BLADERF_FLASH_BYTE_LEN_FPGA;
         } else if (!strcasecmp(argv[2], "fpga115")) {
             image_type = BLADERF_IMAGE_TYPE_FPGA_115KLE;
-            address = BLADERF_FLASH_ADDR_FPGA_META;
-            length = BLADERF_FLASH_LEN_FPGA_META + BLADERF_FLASH_LEN_FPGA;
+            address = BLADERF_FLASH_ADDR_FPGA;
+            length = BLADERF_FLASH_BYTE_LEN_FPGA;
         } else {
             cli_err(state, argv[0], "Invalid image type provided.");
-            status = CMD_RET_INVPARAM;
-            goto cmd_flash_backup_out;
+            status = CLI_RET_INVPARAM;
+            goto out;
         }
     } else {
         assert(argc == 4);
         address = str2uint(argv[2], 0, UINT_MAX, &ok);
-        if (!ok) {
+        if (!ok || (address % BLADERF_FLASH_EB_SIZE != 0)) {
             cli_err(state, argv[0], "Invalid address provided.");
-            goto cmd_flash_backup_out;
+            goto out;
         }
 
         length = str2uint(argv[3], 0, UINT_MAX, &ok);
-        if (!ok) {
+        if (!ok || (length % BLADERF_FLASH_EB_SIZE != 0)) {
             cli_err(state, argv[0], "Invalid length provided.");
-            goto cmd_flash_backup_out;
+            goto out;
         }
 
         image_type = BLADERF_IMAGE_TYPE_RAW;
@@ -103,32 +103,35 @@ int cmd_flash_backup(struct cli_state *state, int argc, char **argv)
 
     image = bladerf_alloc_image(image_type, address, length);
     if (!image) {
-        return CMD_RET_MEM;
+        status = CLI_RET_MEM;
+        goto out;
     }
 
     status = bladerf_get_devinfo(state->dev, &info);
     if (status < 0) {
         lib_error(status, "Failed to get serial number");
-        goto cmd_flash_backup_out;
+        goto out;
     }
 
     strncpy(image->serial, info.serial, BLADERF_SERIAL_LENGTH);
 
-    status = bladerf_read_flash_unaligned(state->dev, address,
-                                          image->data, length);
+    page = BLADERF_FLASH_TO_PAGES(address);
+    count = BLADERF_FLASH_TO_PAGES(length);
 
+
+    status = bladerf_read_flash(state->dev, image->data, page, count);
     if (status < 0) {
         lib_error(status, "Failed to read flash region");
-        goto cmd_flash_backup_out;
+        goto out;
     }
 
     status = bladerf_image_write(image, filename);
     if (status < 0) {
         lib_error(status, "Failed to write image file.");
-        goto cmd_flash_backup_out;
+        goto out;
     }
 
-cmd_flash_backup_out:
+out:
     if (image) {
         bladerf_free_image(image);
     }
